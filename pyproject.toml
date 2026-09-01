@@ -4,12 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cds-arm-control"
-version = "0.2.0"
-description = "Basic safe motion API for a six-axis CDS55xx robot arm"
+version = "0.3.0"
+description = "Six-axis CDS55xx arm: basic safe motion API and kinematics/IK library"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "pyserial>=3.5,<4",
+  "numpy>=1.26",
+  "scipy>=1.11",
+  "pyyaml>=6.0.3",
 ]
 classifiers = [
   "Programming Language :: Python :: 3",
@@ -17,9 +20,44 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
 ]
 
-[tool.setuptools]
-packages = ["cds_arm"]
-py-modules = []
+[project.optional-dependencies]
+viz = [
+    "viser>=0.2",
+    "yourdfpy>=0.0.53",
+]
+mesh = ["trimesh>=4.0"]
+
+[project.scripts]
+arm-ik = "arm_ik.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "types-pyyaml>=6.0.12.20260815",
+    "scipy-stubs>=1.15.3.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cds_arm*", "arm_ik*"]
 
 [tool.setuptools.package-data]
 cds_arm = ["py.typed"]
+arm_ik = ["py.typed", "config/*.yaml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = false
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

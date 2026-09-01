@@ -63,3 +63,82 @@ with connect("/dev/ttyUSB0", baud=115200) as arm:
 ## 机械模型
 
 URDF和STL网格位于`description/`。
+
+## 运动学与逆解（arm_ik）
+
+`arm_ik`是一个纯 Python 的运动学/逆解库，核心只依赖 `numpy` + `scipy`。
+它从 `description/arm.urdf` 读取真实关节限位，给出 6 个舵机应转到的角度。
+
+```bash
+uv sync --all-extras                       # 建环境并安装
+uv run pytest                              # 跑测试
+```
+
+### 基本用法
+
+```python
+from arm_ik import RobotModel
+import numpy as np
+
+from arm_ik.servo import ServoMap
+
+robot = RobotModel.from_urdf("description/arm.urdf")
+servo = ServoMap.from_yaml("arm_ik/config/servo_calibration.yaml", robot.joint_names)
+
+# 把舵机安全限位折进模型。少了这步，IK 会给出舵机执行不了的角度，
+# 下发时被静默夹取，实机落点和 IK 说的不一样。
+robot.tighten_limits(*servo.effective_limits(robot))
+
+# 给定期望末端位姿（位置 + 可选姿态），得到 6 个关节角（弧度）。
+result = robot.ik(position=[0.18, 0.0, 0.20])
+if not result.status.is_usable:
+    raise RuntimeError(f"{result.status}, 差 {result.position_error * 1000:.1f} mm")
+
+ticks = servo.to_ticks(result.q)   # 交给 cds_arm 下发
+print(ticks)   # {1: 799, 2: 118, 3: 262, 4: 411, 5: 271, 6: 99}
+```
+
+`result.status` 是 `IKStatus` 枚举，而非布尔：
+
+| 状态                        | 含义                                   |
+| --------------------------- | -------------------------------------- |
+| `CONVERGED`               | 位置与姿态都达到容差                   |
+| `POSITION_ONLY`           | 位置达到，姿态未达到                   |
+| `OUT_OF_REACH`            | 目标位置在可达壳之外，返回最近可达位姿 |
+| `LIMIT_BLOCKED`           | 被关节限位挡住                         |
+| `MAX_ITER` / `SINGULAR` | 达到迭代上限 / 接近奇异                |
+
+关键点：**不可达目标返回限位内最接近的可达位姿，而非报错**。这台臂的关节行程
+很窄，可达域是一层壳（离基座 40～351 mm）而非实心球，所以"给出最近可行解"
+比"失败"更有用。
+
+需要特别注意位置与姿态的区别：**位置可达不代表该位置上任意姿态都可达**。
+例如 `[0.18, 0, 0.20]` 只给位置时能精确收敛，但同时要求 `rpy(0,0,0)` 就解不出来
+（会返回 `LIMIT_BLOCKED`，位置偏差约 120 mm）。所以先用只给位置的解确认可达性，
+再逐步加姿态约束。
+
+### 命令行
+
+```bash
+uv run arm-ik fk 0 0 0 0 0 0                # 正运动学
+uv run arm-ik ik --pos 0.18 0 0.2 --servo   # 逆解并显示舵机 tick
+uv run arm-ik workspace --count 20000       # 采样并分析可达空间
+uv run arm-ik viz --mode viewer             # viser 浏览器可视化
+uv run arm-ik viz --mode ik                 # 拖拽目标姿态驱动 IK
+```
+
+### 与 cds_arm 的关系
+
+`arm_ik` 只做运动学计算，不碰串口。硬件读写由 `cds_arm` 负责：
+用 `arm_ik` 算出关节角 → `ServoMap.to_ticks` 转成舵机 tick →
+`cds_arm.CDSArm.move()` 下发。本库把 `ServoMap` 与舵机标定文件
+`arm_ik/config/servo_calibration.yaml` 打包，便于换到不同的实机标定。
+
+### 可视化
+
+`viz` extra 依赖 viser，在浏览器里渲染。`replay` 可直接读真实舵机角度驱动数字孪生，
+是排查标定（零位/方向）错误的最直接工具。
+
+```bash
+uv run arm-ik viz --mode replay
+```

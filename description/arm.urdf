@@ -43,9 +43,9 @@
   <!-- KD used as the fixed base. Its side-hole centre is the first arm axis. -->
   <link name="kd_base">
     <inertial>
-      <origin xyz="0 0 0"/>
+      <origin xyz="0 2e-05 0.025012"/>
       <mass value="0.12"/>
-      <inertia ixx="0.0000340" ixy="0" ixz="0" iyy="0.0000513" iyz="0" izz="0.0000673"/>
+      <inertia ixx="3.40477796e-05" ixy="0" ixz="0" iyy="6.72738796e-05" iyz="0" izz="5.12738999e-05"/>
     </inertial>
     <visual>
       <origin xyz="-0.0325 0.015 0" rpy="1.57 0 0"/>
@@ -55,9 +55,9 @@
       <material name="kd_gray"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0"/>
+      <origin xyz="0 2e-05 0.025012"/>
       <geometry>
-        <box size="0.065 0.050 0.030"/>
+        <box size="0.065 0.03004 0.050024"/>
       </geometry>
     </collision>
   </link>
@@ -72,28 +72,28 @@
   <joint name="kd_base_side_to_kd_2" type="revolute">
     <parent link="kd_base"/>
     <child link="kd_2"/>
-    <origin xyz="-0.0075 0.0 0.05" rpy="0 0 1.57"/>
+    <origin xyz="-0.0075 0.0 0.05" rpy="0 0 -1.57"/>
     <axis xyz="0 0 1"/>
     <limit lower="-0.9725" upper="0.8701" effort="6.0" velocity="2.0"/>
     <dynamics damping="0.05" friction="0.02"/>
   </joint>
   <link name="kd_2">
     <inertial>
-      <origin xyz="0 0 0"/>
+      <origin xyz="0 0 0.015"/>
       <mass value="0.12"/>
-      <inertia ixx="0.0000340" ixy="0" ixz="0" iyy="0.0000513" iyz="0" izz="0.0000673"/>
+      <inertia ixx="3.4e-05" ixy="0" ixz="0" iyy="5.125e-05" iyz="0" izz="6.725e-05"/>
     </inertial>
     <visual>
-      <origin xyz="-0.0325 -0.025.0" rpy="0 0 0"/>
+      <origin xyz="-0.0325 -0.025 0" rpy="0 0 0"/>
       <geometry>
         <mesh filename="meshes/KD.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="kd_gray"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0"/>
+      <origin xyz="0 0 0.015"/>
       <geometry>
-        <box size="0.065 0.050 0.030"/>
+        <box size="0.065 0.05 0.03"/>
       </geometry>
     </collision>
   </link>
@@ -101,15 +101,16 @@
     <parent link="kd_2"/>
     <child link="u3b_base"/>
     <origin xyz="-0.0075 0 0.015"/>
-    <axis xyz="0 1 0"/>
-    <limit lower="-0.4606" upper="0.4095" effort="6.0" velocity="2.0"/>
+    <axis xyz="0 -1 0"/>
+    <!-- upper = raw 350 (SAFE_LIMITS[2] 上限) = +66.86°; 再大舵机执行不了 -->
+    <limit lower="-0.4709" upper="1.1670" effort="6.0" velocity="2.0"/>
     <dynamics damping="0.05" friction="0.02"/>
   </joint>
   <link name="u3b_base">
     <inertial>
-      <origin xyz="0 0 0.0275"/>
+      <origin xyz="6.6e-05 -1.2e-05 0.017524"/>
       <mass value="0.08"/>
-      <inertia ixx="0.0000262" ixy="0" ixz="0" iyy="0.0000403" iyz="0" izz="0.0000262"/>
+      <inertia ixx="4.03858971e-05" ixy="0" ixz="0" iyy="2.62543226e-05" iyz="0" izz="2.62368815e-05"/>
     </inertial>
     <visual>
       <origin xyz="-0.015 -0.0275 0.045" rpy="3.14 0 1.57"/>
@@ -119,25 +120,25 @@
       <material name="u3b_gray"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0.0275"/>
+      <origin xyz="6.6e-05 -1.2e-05 0.017524"/>
       <geometry>
-        <box size="0.055 0.030 0.055"/>
+        <box size="0.030131 0.055024 0.055048"/>
       </geometry>
     </collision>
   </link>
   <joint name="u3b_base_to_kd_3" type="fixed">
     <parent link="u3b_base"/>
     <child link="kd_3"/>
-    <origin xyz="0 0 0.045"/>
+    <origin xyz="0 0 0.045" rpy="0 0 3.14"/>
     <axis xyz="1 0 0"/>
     <limit lower="-1.57" upper="1.57" effort="6.0" velocity="2.0"/>
     <dynamics damping="0.05" friction="0.02"/>
   </joint>
   <link name="kd_3">
     <inertial>
-      <origin xyz="0 0 0.015"/>
+      <origin xyz="2.6e-05 2e-05 0.015"/>
       <mass value="0.12"/>
-      <inertia ixx="0.0000340" ixy="0" ixz="0" iyy="0.0000513" iyz="0" izz="0.0000673"/>
+      <inertia ixx="5.13017503e-05" ixy="0" ixz="0" iyy="3.40517722e-05" iyz="0" izz="6.73535224e-05"/>
     </inertial>
     <visual>
       <origin xyz="0.025 -0.0325 0" rpy="0 0 1.57"/>
@@ -147,9 +148,9 @@
       <material name="kd_gray"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0.015"/>
+      <origin xyz="2.6e-05 2e-05 0.015"/>
       <geometry>
-        <box size="0.065 0.050 0.030"/>
+        <box size="0.050052 0.06504 0.03"/>
       </geometry>
     </collision>
   </link>
@@ -163,9 +164,9 @@
   </joint>
   <link name="u3b_lower">
     <inertial>
-      <origin xyz="0 0 0.0275"/>
+      <origin xyz="4.4e-05 0 0.017456"/>
       <mass value="0.08"/>
-      <inertia ixx="0.0000262" ixy="0" ixz="0" iyy="0.0000403" iyz="0" izz="0.0000262"/>
+      <inertia ixx="2.62309036e-05" ixy="0" ixz="0" iyy="4.04618072e-05" iyz="0" izz="2.62309036e-05"/>
     </inertial>
     <visual>
       <origin xyz="0.0275 -0.015 0.045" rpy="0 3.14 0"/>
@@ -175,9 +176,9 @@
       <material name="u3b_gray"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0.0275"/>
+      <origin xyz="4.4e-05 0 0.017456"/>
       <geometry>
-        <box size="0.055 0.030 0.055"/>
+        <box size="0.055088 0.03 0.055088"/>
       </geometry>
     </collision>
   </link>
@@ -193,7 +194,7 @@
     <inertial>
       <origin xyz="0 0 0.0275"/>
       <mass value="0.08"/>
-      <inertia ixx="0.0000262" ixy="0" ixz="0" iyy="0.0000403" iyz="0" izz="0.0000262"/>
+      <inertia ixx="2.61666667e-05" ixy="0" ixz="0" iyy="4.03333333e-05" iyz="0" izz="2.61666667e-05"/>
     </inertial>
     <visual>
       <origin xyz="-0.0275 -0.015 0" />
@@ -205,7 +206,7 @@
     <collision>
       <origin xyz="0 0 0.0275"/>
       <geometry>
-        <box size="0.055 0.030 0.055"/>
+        <box size="0.055 0.03 0.055"/>
       </geometry>
     </collision>
   </link>
@@ -222,9 +223,9 @@
 
   <link name="kd_pair_front">
     <inertial>
-      <origin xyz="0 0 0.015"/>
+      <origin xyz="2.6e-05 0.00752 0"/>
       <mass value="0.12"/>
-      <inertia ixx="0.0000340" ixy="0" ixz="0" iyy="0.0000513" iyz="0" izz="0.0000673"/>
+      <inertia ixx="5.13017503e-05" ixy="0" ixz="0" iyy="3.40517722e-05" iyz="0" izz="6.73535224e-05"/>
     </inertial>
     <visual>
       <origin xyz="0.025 -0.025 -0.015" rpy="0 0 1.57"/>
@@ -234,9 +235,9 @@
       <material name="kd_gray"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0.015"/>
+      <origin xyz="2.6e-05 0.00752 0"/>
       <geometry>
-        <box size="0.065 0.050 0.030"/>
+        <box size="0.050052 0.06504 0.03"/>
       </geometry>
     </collision>
   </link>
@@ -252,7 +253,7 @@
     <inertial>
       <origin xyz="0 0 0.015"/>
       <mass value="0.12"/>
-      <inertia ixx="0.0000340" ixy="0" ixz="0" iyy="0.0000513" iyz="0" izz="0.0000673"/>
+      <inertia ixx="3.4e-05" ixy="0" ixz="0" iyy="5.125e-05" iyz="0" izz="6.725e-05"/>
     </inertial>
     <visual>
       <origin xyz="-0.0325 -0.025 0"/>
@@ -264,7 +265,7 @@
     <collision>
       <origin xyz="0 0 0.015"/>
       <geometry>
-        <box size="0.065 0.050 0.030"/>
+        <box size="0.065 0.05 0.03"/>
       </geometry>
     </collision>
   </link>
@@ -281,9 +282,9 @@
 
   <link name="u3b_upper">
     <inertial>
-      <origin xyz="0 0 0.0275"/>
+      <origin xyz="-2.2e-05 5.6e-05 0.017456"/>
       <mass value="0.08"/>
-      <inertia ixx="0.0000262" ixy="0" ixz="0" iyy="0.0000403" iyz="0" izz="0.0000262"/>
+      <inertia ixx="4.04793452e-05" ixy="0" ixz="0" iyy="2.62484597e-05" iyz="0" izz="2.62659977e-05"/>
     </inertial>
     <visual>
       <origin xyz="0.015 0.0275 0.045" rpy="0 3.14 1.57"/>
@@ -293,33 +294,13 @@
       <material name="u3b_gray"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0.0275"/>
+      <origin xyz="-2.2e-05 5.6e-05 0.017456"/>
       <geometry>
-        <box size="0.055 0.030 0.055"/>
+        <box size="0.030044 0.055111 0.055088"/>
       </geometry>
     </collision>
   </link>
 
-<link name="u3b_base">
-    <inertial>
-      <origin xyz="0 0 0.0275"/>
-      <mass value="0.08"/>
-      <inertia ixx="0.0000262" ixy="0" ixz="0" iyy="0.0000403" iyz="0" izz="0.0000262"/>
-    </inertial>
-    <visual>
-      <origin xyz="-0.015 -0.0275 0.045" rpy="3.14 0 1.57"/>
-      <geometry>
-        <mesh filename="meshes/U3B.STL" scale="0.001 0.001 0.001"/>
-      </geometry>
-      <material name="u3b_gray"/>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0.0275"/>
-      <geometry>
-        <box size="0.055 0.030 0.055"/>
-      </geometry>
-    </collision>
-  </link>
   <joint name="u3b_upper_to_kd_4" type="fixed">
     <parent link="u3b_upper"/>
     <child link="kd_4"/>
@@ -330,9 +311,9 @@
   </joint>
   <link name="kd_4">
     <inertial>
-      <origin xyz="0 0 0.015"/>
+      <origin xyz="-0.024974 2e-05 0.03"/>
       <mass value="0.12"/>
-      <inertia ixx="0.0000340" ixy="0" ixz="0" iyy="0.0000513" iyz="0" izz="0.0000673"/>
+      <inertia ixx="5.13017503e-05" ixy="0" ixz="0" iyy="3.40517722e-05" iyz="0" izz="6.73535224e-05"/>
     </inertial>
     <visual>
       <origin xyz="0.0 -0.0325 0.015" rpy="0 0 1.57"/>
@@ -342,9 +323,9 @@
       <material name="kd_gray"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0.015"/>
+      <origin xyz="-0.024974 2e-05 0.03"/>
       <geometry>
-        <box size="0.065 0.050 0.030"/>
+        <box size="0.050052 0.06504 0.03"/>
       </geometry>
     </collision>
   </link>
@@ -358,9 +339,9 @@
   </joint>
   <link name="hand_palm">
     <inertial>
-      <origin xyz="0.015 0 0.035"/>
+      <origin xyz="0.018656 -0.006358 0.035202"/>
       <mass value="0.35"/>
-      <inertia ixx="0.000292" ixy="0" ixz="0" iyy="0.000478" iyz="0" izz="0.000397"/>
+      <inertia ixx="0.000297027197" ixy="0" ixz="0" iyy="0.000568130164" iyz="0" izz="0.000449558445"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0"/>
@@ -370,9 +351,9 @@
       <material name="hand_dark"/>
     </visual>
     <collision>
-      <origin xyz="0.015 0 0.035"/>
+      <origin xyz="0.018656 -0.006358 0.035202"/>
       <geometry>
-        <box size="0.110 0.060 0.080"/>
+        <box size="0.111149 0.05531 0.084407"/>
       </geometry>
     </collision>
   </link>
@@ -389,9 +370,9 @@
 
   <link name="finger_pinky">
     <inertial>
-      <origin xyz="0 0 0.045"/>
+      <origin xyz="0.004537 0.000808 0.024039"/>
       <mass value="0.04"/>
-      <inertia ixx="0.0000300" ixy="0" ixz="0" iyy="0.0000291" iyz="0" izz="0.0000051"/>
+      <inertia ixx="5.38302262e-05" ixy="0" ixz="0" iyy="5.08933904e-05" iyz="0" izz="6.52359358e-06"/>
     </inertial>
     <visual>
       <geometry>
@@ -400,9 +381,9 @@
       <material name="hand_dark"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0.045"/>
+      <origin xyz="0.004537 0.000808 0.024039"/>
       <geometry>
-        <box size="0.025 0.030 0.090"/>
+        <box size="0.023195 0.03767 0.121367"/>
       </geometry>
     </collision>
   </link>
@@ -418,9 +399,9 @@
 
   <link name="finger_ring">
     <inertial>
-      <origin xyz="0 0 0.045"/>
+      <origin xyz="0.002047 0.000808 0.041587"/>
       <mass value="0.04"/>
-      <inertia ixx="0.0000300" ixy="0" ixz="0" iyy="0.0000291" iyz="0" izz="0.0000051"/>
+      <inertia ixx="4.30291598e-05" ixy="0" ixz="0" iyy="4.25210141e-05" iyz="0" izz="8.95228362e-06"/>
     </inertial>
     <visual>
       <geometry>
@@ -429,9 +410,9 @@
       <material name="hand_dark"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0.045"/>
+      <origin xyz="0.002047 0.000808 0.041587"/>
       <geometry>
-        <box size="0.025 0.030 0.100"/>
+        <box size="0.03559 0.03767 0.10719"/>
       </geometry>
     </collision>
   </link>
@@ -447,9 +428,9 @@
 
   <link name="finger_middle">
     <inertial>
-      <origin xyz="0 0 0.045"/>
+      <origin xyz="-0.00131 0.000808 0.04712"/>
       <mass value="0.04"/>
-      <inertia ixx="0.0000300" ixy="0" ixz="0" iyy="0.0000291" iyz="0" izz="0.0000051"/>
+      <inertia ixx="4.22594979e-05" ixy="0" ixz="0" iyy="4.24977434e-05" iyz="0" izz="9.69867477e-06"/>
     </inertial>
     <visual>
       <geometry>
@@ -458,9 +439,9 @@
       <material name="hand_dark"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0.045"/>
+      <origin xyz="-0.00131 0.000808 0.04712"/>
       <geometry>
-        <box size="0.025 0.030 0.105"/>
+        <box size="0.038607 0.03767 0.106107"/>
       </geometry>
     </collision>
   </link>
@@ -476,9 +457,9 @@
 
   <link name="finger_index">
     <inertial>
-      <origin xyz="0 0 0.045"/>
+      <origin xyz="-0.001045 0.000808 0.039311"/>
       <mass value="0.04"/>
-      <inertia ixx="0.0000300" ixy="0" ixz="0" iyy="0.0000291" iyz="0" izz="0.0000051"/>
+      <inertia ixx="3.85778765e-05" ixy="0" ixz="0" iyy="3.66163507e-05" iyz="0" izz="7.49890358e-06"/>
     </inertial>
     <visual>
       <geometry>
@@ -487,9 +468,9 @@
       <material name="hand_dark"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0.045"/>
+      <origin xyz="-0.001045 0.000808 0.039311"/>
       <geometry>
-        <box size="0.025 0.030 0.095"/>
+        <box size="0.02882 0.03767 0.100769"/>
       </geometry>
     </collision>
   </link>
@@ -505,9 +486,9 @@
 
   <link name="finger_thumb">
     <inertial>
-      <origin xyz="0 0 0.018"/>
+      <origin xyz="0.008693 -0.001838 0.007497"/>
       <mass value="0.045"/>
-      <inertia ixx="0.0000240" ixy="0" ixz="0" iyy="0.0000240" iyz="0" izz="0.0000040"/>
+      <inertia ixx="1.88326087e-05" ixy="0" ixz="0" iyy="2.73737121e-05" iyz="0" izz="2.50623035e-05"/>
     </inertial>
     <visual>
       <geometry>
@@ -516,9 +497,9 @@
       <material name="hand_dark"/>
     </visual>
     <collision>
-      <origin xyz="0.008 0 0.018"/>
+      <origin xyz="0.008693 -0.001838 0.007497"/>
       <geometry>
-        <box size="0.070 0.040 0.040"/>
+        <box size="0.066936 0.046934 0.053096"/>
       </geometry>
     </collision>
   </link>

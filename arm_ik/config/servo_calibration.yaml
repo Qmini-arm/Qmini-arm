@@ -1,0 +1,46 @@
+comment: 由cds_arm.CENTER/SAFE_LIMITS与URDF限位拟合得到。fit_residual_deg偏大的条目需要实机复核。
+ticks_per_revolution: 1023
+degrees_per_revolution: 300.0
+joints:
+- joint_name: kd_base_side_to_kd_2
+  servo_id: 1
+  center_tick: 812
+  direction: 1
+  tick_lower: 640
+  tick_upper: 1000
+  fit_residual_deg: 5.28
+- joint_name: kd_2_to_u3b_base
+  servo_id: 2
+  center_tick: 122
+  direction: 1
+  tick_lower: 30
+  tick_upper: 350
+  fit_residual_deg: 0.002
+- joint_name: kd_3_to_u3b_lower
+  servo_id: 3
+  center_tick: 144
+  direction: 1
+  tick_lower: 100
+  tick_upper: 600
+  fit_residual_deg: 1.175
+- joint_name: u3b_middle_to_kd_pair_front
+  servo_id: 4
+  center_tick: 481
+  direction: 1
+  tick_lower: 330
+  tick_upper: 600
+  fit_residual_deg: 0.296
+- joint_name: kd_pair_to_u3b_upper
+  servo_id: 5
+  center_tick: 359
+  direction: 1
+  tick_lower: 250
+  tick_upper: 470
+  fit_residual_deg: 2.345
+- joint_name: kd_4_to_palm
+  servo_id: 6
+  center_tick: 88
+  direction: 1
+  tick_lower: 0
+  tick_upper: 200
+  fit_residual_deg: 0.882
