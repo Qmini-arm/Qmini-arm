@@ -138,6 +138,9 @@ AA 77 01 06 H1 H2 H3 H4 H5 RESERVED CHECK
 `RESERVED` 永远固定为 `90`。传入六个值会抛出 `FingerValueError`。它不是手腕目标，API 也没有
 设置它的入口。
 
+配套的 `arduino/uHand_UNO_usb_serial/uHand_UNO_usb_serial.ino` 仍接收这个旧格式，但只为
+H1～H5 的 `D7/D6/D5/D4/D3` 初始化 Servo；第六字节被忽略，D2 不输出舵机控制脉冲。
+
 ## 状态和异常
 
 - `hand.last_target`：最后请求的五指目标，不是实机反馈；

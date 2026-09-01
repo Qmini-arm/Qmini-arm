@@ -7,10 +7,22 @@
 H1 thumb · H2 index · H3 middle · H4 ring · H5 pinky
 ```
 
-API 中没有手腕、第六轴或旋转轴参数。旧固件仍要求六字节舵机帧，因此驱动会在内部追加固定
+API 中没有手腕、第六轴或旋转轴参数。为兼容已验证协议，固件仍接收六字节舵机帧，因此驱动会在内部追加固定
 占位值 `90`；调用者不能读取或修改这个占位值，机械臂手腕 `W1` 也绝不能从这里发送。
 
-## 安装
+## 烧录五指直连固件
+
+先在 Arduino IDE 中打开并烧录：
+
+```text
+arduino/uHand_UNO_usb_serial/uHand_UNO_usb_serial.ino
+```
+
+固件通过 UNO Type-B USB 的硬件串口以 `115200` 接收命令，只初始化 H1～H5 对应的
+`D7/D6/D5/D4/D3`。旧第六路对应的 `D2` 不初始化、不输出舵机脉冲；协议中的第六个兼容字节
+会被读取但直接忽略。烧录后关闭 Arduino IDE 串口监视器，再运行 Python 程序。
+
+## 安装 Python API
 
 ```bash
 cd Qmini-arm/hand_serial_tools
