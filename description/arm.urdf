@@ -1,0 +1,588 @@
+<?xml version="1.0"?>
+<robot name="kd_u3b_uhand_arm">
+  <!--
+    Simplified arm assembled from the requested sequence:
+      KD(base) -> U3B -> U3B -> KD + KD -> U3B -> right-angle adapter -> uHand palm.
+    The supplied STL files are in millimetres, hence the 0.001 mesh scale.
+    The hand meshes are filtered from uHand uno.igs to remove the acrylic base and
+    controller modules.  The five finger links each have their own servo joint.
+  -->
+
+  <material name="kd_gray">
+    <color rgba="0.30 0.33 0.36 1.0"/>
+  </material>
+  <material name="u3b_gray">
+    <color rgba="0.46 0.50 0.54 1.0"/>
+  </material>
+  <material name="adapter_black">
+    <color rgba="0.12 0.13 0.14 1.0"/>
+  </material>
+  <material name="hand_dark">
+    <color rgba="0.16 0.18 0.20 1.0"/>
+  </material>
+
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0"/>
+      <mass value="0.20"/>
+      <inertia ixx="0.00010" ixy="0" ixz="0" iyy="0.00010" iyz="0" izz="0.00010"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <box size="0.08 0.08 0.01"/>
+      </geometry>
+      <material name="kd_gray"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.08 0.08 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- KD used as the fixed base. Its side-hole centre is the first arm axis. -->
+  <link name="kd_base">
+    <inertial>
+      <origin xyz="0 0 0"/>
+      <mass value="0.12"/>
+      <inertia ixx="0.0000340" ixy="0" ixz="0" iyy="0.0000513" iyz="0" izz="0.0000673"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.0325 0.015 0" rpy="1.57 0 0"/>
+      <geometry>
+        <mesh filename="meshes/KD.STL" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="kd_gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <box size="0.065 0.050 0.030"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="base_to_kd" type="fixed">
+    <parent link="base_link"/>
+    <child link="kd_base"/>
+    <origin xyz="0 0 0"/>
+  </joint>
+
+  <!-- KD side centre -> the two-hole side of the first U3B (not U3A). -->
+  <joint name="kd_base_side_to_kd_2" type="revolute">
+    <parent link="kd_base"/>
+    <child link="kd_2"/>
+    <origin xyz="-0.0075 0.0 0.05" rpy="0 0 1.57"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-0.9725" upper="0.8701" effort="6.0" velocity="2.0"/>
+    <dynamics damping="0.05" friction="0.02"/>
+  </joint>
+  <link name="kd_2">
+    <inertial>
+      <origin xyz="0 0 0"/>
+      <mass value="0.12"/>
+      <inertia ixx="0.0000340" ixy="0" ixz="0" iyy="0.0000513" iyz="0" izz="0.0000673"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.0325 -0.025.0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="meshes/KD.STL" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="kd_gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <box size="0.065 0.050 0.030"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="kd_2_to_u3b_base" type="revolute">
+    <parent link="kd_2"/>
+    <child link="u3b_base"/>
+    <origin xyz="-0.0075 0 0.015"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-0.4606" upper="0.4095" effort="6.0" velocity="2.0"/>
+    <dynamics damping="0.05" friction="0.02"/>
+  </joint>
+  <link name="u3b_base">
+    <inertial>
+      <origin xyz="0 0 0.0275"/>
+      <mass value="0.08"/>
+      <inertia ixx="0.0000262" ixy="0" ixz="0" iyy="0.0000403" iyz="0" izz="0.0000262"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.015 -0.0275 0.045" rpy="3.14 0 1.57"/>
+      <geometry>
+        <mesh filename="meshes/U3B.STL" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="u3b_gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0275"/>
+      <geometry>
+        <box size="0.055 0.030 0.055"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="u3b_base_to_kd_3" type="fixed">
+    <parent link="u3b_base"/>
+    <child link="kd_3"/>
+    <origin xyz="0 0 0.045"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-1.57" upper="1.57" effort="6.0" velocity="2.0"/>
+    <dynamics damping="0.05" friction="0.02"/>
+  </joint>
+  <link name="kd_3">
+    <inertial>
+      <origin xyz="0 0 0.015"/>
+      <mass value="0.12"/>
+      <inertia ixx="0.0000340" ixy="0" ixz="0" iyy="0.0000513" iyz="0" izz="0.0000673"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.025 -0.0325 0" rpy="0 0 1.57"/>
+      <geometry>
+        <mesh filename="meshes/KD.STL" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="kd_gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.015"/>
+      <geometry>
+        <box size="0.065 0.050 0.030"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="kd_3_to_u3b_lower" type="revolute">
+    <parent link="kd_3"/>
+    <child link="u3b_lower"/>
+    <origin xyz="0.0 -0.0075 0.015"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-0.2047" upper="2.3544" effort="6.0" velocity="2.0"/>
+    <dynamics damping="0.05" friction="0.02"/>
+  </joint>
+  <link name="u3b_lower">
+    <inertial>
+      <origin xyz="0 0 0.0275"/>
+      <mass value="0.08"/>
+      <inertia ixx="0.0000262" ixy="0" ixz="0" iyy="0.0000403" iyz="0" izz="0.0000262"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.0275 -0.015 0.045" rpy="0 3.14 0"/>
+      <geometry>
+        <mesh filename="meshes/U3B.STL" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="u3b_gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0275"/>
+      <geometry>
+        <box size="0.055 0.030 0.055"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Face-to-face U3B connection. -->
+  <joint name="u3b_lower_to_u3b_middle" type="fixed">
+    <parent link="u3b_lower"/>
+    <child link="u3b_middle"/>
+    <origin xyz="0 0 0.045" rpy="0 0 0"/>
+  </joint>
+
+  <link name="u3b_middle">
+    <inertial>
+      <origin xyz="0 0 0.0275"/>
+      <mass value="0.08"/>
+      <inertia ixx="0.0000262" ixy="0" ixz="0" iyy="0.0000403" iyz="0" izz="0.0000262"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.0275 -0.015 0" />
+      <geometry>
+        <mesh filename="meshes/U3B.STL" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="u3b_gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0275"/>
+      <geometry>
+        <box size="0.055 0.030 0.055"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- First KD of the paired KD block. -->
+  <joint name="u3b_middle_to_kd_pair_front" type="revolute">
+    <parent link="u3b_middle"/>
+    <child link="kd_pair_front"/>
+    <origin xyz="0 0 0.045" rpy="3.14 0 0"/>
+    <axis xyz="-1 0 0"/>
+    <limit lower="-0.7677" upper="0.6142" effort="6.0" velocity="2.0"/>
+    <dynamics damping="0.05" friction="0.02"/>
+  </joint>
+
+  <link name="kd_pair_front">
+    <inertial>
+      <origin xyz="0 0 0.015"/>
+      <mass value="0.12"/>
+      <inertia ixx="0.0000340" ixy="0" ixz="0" iyy="0.0000513" iyz="0" izz="0.0000673"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.025 -0.025 -0.015" rpy="0 0 1.57"/>
+      <geometry>
+        <mesh filename="meshes/KD.STL" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="kd_gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.015"/>
+      <geometry>
+        <box size="0.065 0.050 0.030"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- The second KD is fixed face-to-face with the first one. -->
+  <joint name="kd_pair_front_to_kd_pair_rear" type="fixed">
+    <parent link="kd_pair_front"/>
+    <child link="kd_pair_rear"/>
+    <origin xyz="0 0.0075 -0.015" rpy="3.14 0 1.57"/>
+  </joint>
+
+  <link name="kd_pair_rear">
+    <inertial>
+      <origin xyz="0 0 0.015"/>
+      <mass value="0.12"/>
+      <inertia ixx="0.0000340" ixy="0" ixz="0" iyy="0.0000513" iyz="0" izz="0.0000673"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.0325 -0.025 0"/>
+      <geometry>
+        <mesh filename="meshes/KD.STL" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="kd_gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.015"/>
+      <geometry>
+        <box size="0.065 0.050 0.030"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Paired KD side centre -> the third U3B. -->
+  <joint name="kd_pair_to_u3b_upper" type="revolute">
+    <parent link="kd_pair_rear"/>
+    <child link="u3b_upper"/>
+    <origin xyz="-0.0075 0 0.015"/>
+    <axis xyz="0 -1 0"/>
+    <limit lower="-0.5988" upper="0.5272" effort="6.0" velocity="2.0"/>
+    <dynamics damping="0.05" friction="0.02"/>
+  </joint>
+
+  <link name="u3b_upper">
+    <inertial>
+      <origin xyz="0 0 0.0275"/>
+      <mass value="0.08"/>
+      <inertia ixx="0.0000262" ixy="0" ixz="0" iyy="0.0000403" iyz="0" izz="0.0000262"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.015 0.0275 0.045" rpy="0 3.14 1.57"/>
+      <geometry>
+        <mesh filename="meshes/U3B.STL" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="u3b_gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0275"/>
+      <geometry>
+        <box size="0.055 0.030 0.055"/>
+      </geometry>
+    </collision>
+  </link>
+
+<link name="u3b_base">
+    <inertial>
+      <origin xyz="0 0 0.0275"/>
+      <mass value="0.08"/>
+      <inertia ixx="0.0000262" ixy="0" ixz="0" iyy="0.0000403" iyz="0" izz="0.0000262"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.015 -0.0275 0.045" rpy="3.14 0 1.57"/>
+      <geometry>
+        <mesh filename="meshes/U3B.STL" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="u3b_gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0275"/>
+      <geometry>
+        <box size="0.055 0.030 0.055"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="u3b_upper_to_kd_4" type="fixed">
+    <parent link="u3b_upper"/>
+    <child link="kd_4"/>
+    <origin xyz="0.06 0 0.045" rpy="0 1.57 3.14"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-1.57" upper="1.57" effort="6.0" velocity="2.0"/>
+    <dynamics damping="0.05" friction="0.02"/>
+  </joint>
+  <link name="kd_4">
+    <inertial>
+      <origin xyz="0 0 0.015"/>
+      <mass value="0.12"/>
+      <inertia ixx="0.0000340" ixy="0" ixz="0" iyy="0.0000513" iyz="0" izz="0.0000673"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.0 -0.0325 0.015" rpy="0 0 1.57"/>
+      <geometry>
+        <mesh filename="meshes/KD.STL" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="kd_gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.015"/>
+      <geometry>
+        <box size="0.065 0.050 0.030"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="kd_4_to_palm" type="revolute">
+    <parent link="kd_4"/>
+    <child link="hand_palm"/>
+    <origin xyz="-0.055 -0.0075 0.0275" rpy="1.57 0 -1.57"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-0.4658" upper="0.5579" effort="6.0" velocity="2.0"/>
+    <dynamics damping="0.05" friction="0.02"/>
+  </joint>
+  <link name="hand_palm">
+    <inertial>
+      <origin xyz="0.015 0 0.035"/>
+      <mass value="0.35"/>
+      <inertia ixx="0.000292" ixy="0" ixz="0" iyy="0.000478" iyz="0" izz="0.000397"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="meshes/hand_palm.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="hand_dark"/>
+    </visual>
+    <collision>
+      <origin xyz="0.015 0 0.035"/>
+      <geometry>
+        <box size="0.110 0.060 0.080"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Five independent finger servos.  The x positions follow the extracted CAD. -->
+  <joint name="finger_pinky_joint" type="fixed">
+    <parent link="hand_palm"/>
+    <child link="finger_pinky"/>
+    <origin xyz="-0.032 -0.003 0.065"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.20" upper="0.35" effort="0.8" velocity="4.0"/>
+    <dynamics damping="0.02" friction="0.01"/>
+  </joint>
+
+  <link name="finger_pinky">
+    <inertial>
+      <origin xyz="0 0 0.045"/>
+      <mass value="0.04"/>
+      <inertia ixx="0.0000300" ixy="0" ixz="0" iyy="0.0000291" iyz="0" izz="0.0000051"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <mesh filename="meshes/finger_pinky.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="hand_dark"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.045"/>
+      <geometry>
+        <box size="0.025 0.030 0.090"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="finger_ring_joint" type="fixed">
+    <parent link="hand_palm"/>
+    <child link="finger_ring"/>
+    <origin xyz="-0.015 -0.003 0.065"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.20" upper="0.35" effort="0.8" velocity="4.0"/>
+    <dynamics damping="0.02" friction="0.01"/>
+  </joint>
+
+  <link name="finger_ring">
+    <inertial>
+      <origin xyz="0 0 0.045"/>
+      <mass value="0.04"/>
+      <inertia ixx="0.0000300" ixy="0" ixz="0" iyy="0.0000291" iyz="0" izz="0.0000051"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <mesh filename="meshes/finger_ring.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="hand_dark"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.045"/>
+      <geometry>
+        <box size="0.025 0.030 0.100"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="finger_middle_joint" type="fixed">
+    <parent link="hand_palm"/>
+    <child link="finger_middle"/>
+    <origin xyz="0.002 -0.003 0.065"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.20" upper="0.35" effort="0.8" velocity="4.0"/>
+    <dynamics damping="0.02" friction="0.01"/>
+  </joint>
+
+  <link name="finger_middle">
+    <inertial>
+      <origin xyz="0 0 0.045"/>
+      <mass value="0.04"/>
+      <inertia ixx="0.0000300" ixy="0" ixz="0" iyy="0.0000291" iyz="0" izz="0.0000051"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <mesh filename="meshes/finger_middle.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="hand_dark"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.045"/>
+      <geometry>
+        <box size="0.025 0.030 0.105"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="finger_index_joint" type="fixed">
+    <parent link="hand_palm"/>
+    <child link="finger_index"/>
+    <origin xyz="0.021 -0.003 0.065"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.20" upper="0.35" effort="0.8" velocity="4.0"/>
+    <dynamics damping="0.02" friction="0.01"/>
+  </joint>
+
+  <link name="finger_index">
+    <inertial>
+      <origin xyz="0 0 0.045"/>
+      <mass value="0.04"/>
+      <inertia ixx="0.0000300" ixy="0" ixz="0" iyy="0.0000291" iyz="0" izz="0.0000051"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <mesh filename="meshes/finger_index.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="hand_dark"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.045"/>
+      <geometry>
+        <box size="0.025 0.030 0.095"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="finger_thumb_joint" type="fixed">
+    <parent link="hand_palm"/>
+    <child link="finger_thumb"/>
+    <origin xyz="0.040 -0.016 0.032" rpy="0 0 -0.35"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.30" upper="0.50" effort="0.8" velocity="4.0"/>
+    <dynamics damping="0.02" friction="0.01"/>
+  </joint>
+
+  <link name="finger_thumb">
+    <inertial>
+      <origin xyz="0 0 0.018"/>
+      <mass value="0.045"/>
+      <inertia ixx="0.0000240" ixy="0" ixz="0" iyy="0.0000240" iyz="0" izz="0.0000040"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <mesh filename="meshes/finger_thumb.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="hand_dark"/>
+    </visual>
+    <collision>
+      <origin xyz="0.008 0 0.018"/>
+      <geometry>
+        <box size="0.070 0.040 0.040"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Position-control transmissions: one actuator per moving arm/finger joint. -->
+  <transmission name="trans_kd_base_side_to_kd_2">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="kd_base_side_to_kd_2">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="servo_1">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="trans_kd_2_to_u3b_base">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="kd_2_to_u3b_base">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="servo_2">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="trans_kd_3_to_u3b_lower">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="kd_3_to_u3b_lower">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="servo_3">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="trans_u3b_middle_to_kd_pair_front">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="u3b_middle_to_kd_pair_front">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="servo_4">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="trans_kd_pair_to_u3b_upper">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="kd_pair_to_u3b_upper">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="servo_5">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+  <transmission name="trans_kd_4_to_palm">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="kd_4_to_palm">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="servo_6">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+</robot>
