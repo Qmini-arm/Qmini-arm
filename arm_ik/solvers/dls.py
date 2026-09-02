@@ -34,11 +34,16 @@ class DLSSolver(BaseIKSolver):
         q = seed.copy()
         lam = cfg.damping_init
         history: list[float] = []
+        position_only = cfg.position_only
 
         # One chain walk serves both the pose and the Jacobian, so an accepted
         # iteration costs a single FK rather than two.
         state = self.robot.chain_state(q)
-        raw = pose_error(state.tip_pose, target)
+        if position_only:
+            raw = np.zeros(6, dtype=np.float64)
+            raw[:3] = target[:3, 3] - state.tip_pose[:3, 3]
+        else:
+            raw = pose_error(state.tip_pose, target)
         err = raw * weights
         residual = float(np.linalg.norm(err))
         history.append(residual)
@@ -58,13 +63,19 @@ class DLSSolver(BaseIKSolver):
             if pos_ok and rot_ok:
                 break
 
-            jac = weights[:, None] * geometric_jacobian(state)
+            jacobian = geometric_jacobian(state)
+            if position_only:
+                jac = weights[:3, None] * jacobian[:3]
+                step_error = err[:3]
+            else:
+                jac = weights[:, None] * jacobian
+                step_error = err
             # Freeze joints already pinned at a limit and pushing further out.
-            jac = jac * self._free_mask(q, jac, err)[None, :]
+            jac = jac * self._free_mask(q, jac, step_error)[None, :]
 
             hessian = jac.T @ jac + (lam**2) * identity
             try:
-                step = np.linalg.solve(hessian, jac.T @ err)
+                step = np.linalg.solve(hessian, jac.T @ step_error)
             except np.linalg.LinAlgError:
                 lam = min(lam * cfg.damping_increase, cfg.damping_max)
                 continue
@@ -75,7 +86,11 @@ class DLSSolver(BaseIKSolver):
 
             candidate = np.clip(q + step, self.robot.lower, self.robot.upper)
             cand_state = self.robot.chain_state(candidate)
-            cand_raw = pose_error(cand_state.tip_pose, target)
+            if position_only:
+                cand_raw = np.zeros(6, dtype=np.float64)
+                cand_raw[:3] = target[:3, 3] - cand_state.tip_pose[:3, 3]
+            else:
+                cand_raw = pose_error(cand_state.tip_pose, target)
             cand_err = cand_raw * weights
             cand_residual = float(np.linalg.norm(cand_err))
 

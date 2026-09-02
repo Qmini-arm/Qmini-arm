@@ -2,9 +2,11 @@
 
 Three entry points share one ``ViserUrdf`` render path:
 
-- :func:`launch_viewer` -- joint-angle sliders over the URDF's own limits.
+- :func:`launch_viewer` -- joint-angle sliders over the URDF's own limits, with
+  an optional explicitly enabled real-arm command path.
 - :func:`launch_ik_app` -- an end-effector target driving IK, adjustable either
-  by dragging a gizmo or by six sliders (x/y/z and roll/pitch/yaw).
+  by dragging a gizmo or by six sliders (x/y/z and roll/pitch/yaw), with the
+  same optional real-arm command path.
 - :func:`replay` -- read the real servos and animate the digital twin.
 
 viser renders in a browser; the server is a local Python process, so the same
@@ -23,13 +25,15 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
 
+from ..config import IKStatus
 from ..model.transforms import FloatArray, matrix_to_rpy, rpy_to_matrix
-from ..servo.mapping import ServoBackend
+from ..servo.mapping import ServoBackend, ServoMap
 
 if TYPE_CHECKING:
     from ..model.robot_model import RobotModel
@@ -51,6 +55,274 @@ _BOUNDS_MARGIN = 0.05
 # as a surface rather than a scatter. 8000 samples take well under a second.
 _CLOUD_SAMPLES = 8000
 _CLOUD_POINT_SIZE = 0.002
+
+
+class _CommandBackend(Protocol):
+    """The writable subset of a real-arm backend used by the viewer.
+
+    ``ServoBackend`` intentionally only promises feedback reads because replay
+    does not need a command path.  The live controls require the two additional
+    CDSArm operations below, so keep that stronger contract local to this
+    module instead of making read-only backends implement fake writes.
+    """
+
+    def read_positions(self) -> dict[int, int]: ...
+
+    def takeover_current(self, *, speed: int = 160) -> dict[int, int]: ...
+
+    def send_goals(
+        self,
+        positions: dict[int, int],
+        speed: int,
+        *,
+        verify: bool = True,
+    ) -> bytes: ...
+
+
+class _RealArmDriver:
+    """Translate joint configurations into guarded, latest-state bus writes."""
+
+    def __init__(
+        self,
+        backend: _CommandBackend,
+        servo_map: ServoMap,
+        *,
+        speed: int = 160,
+    ) -> None:
+        self.backend = backend
+        self.servo_map = servo_map
+        self._lock = threading.RLock()
+        self._enabled = False
+        self._armed = False
+        self._last_ticks: dict[int, int] | None = None
+        self._speed = 160
+        self.speed = speed
+
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    @property
+    def speed(self) -> int:
+        return self._speed
+
+    @speed.setter
+    def speed(self, value: int | float) -> None:
+        speed = int(round(float(value)))
+        if not 1 <= speed <= 1023:
+            raise ValueError("实机速度必须在1..1023")
+        self._speed = speed
+
+    @property
+    def port_name(self) -> str:
+        return str(getattr(self.backend, "port_name", "串口"))
+
+    def read_current(self) -> FloatArray:
+        """Read feedback without writing or changing torque state."""
+        with self._lock:
+            if self._enabled:
+                raise RuntimeError("实机驱动启用时不能单独读取当前位置")
+            ticks = self.backend.read_positions()
+            self._last_ticks = dict(ticks)
+            return self.servo_map.to_joints(ticks)
+
+    def takeover(self) -> FloatArray:
+        """Hold the present pose, then return it in URDF joint coordinates.
+
+        ``CDSArm.takeover_current`` samples a stable feedback pose and writes
+        that same pose before enabling torque.  The driver remains disabled until
+        the caller has synchronised the browser controls to the returned pose.
+        """
+        with self._lock:
+            self._enabled = False
+            ticks = self.backend.takeover_current(speed=self._speed)
+            self._last_ticks = dict(ticks)
+            self._armed = True
+            return self.servo_map.to_joints(ticks)
+
+    def enable(self) -> None:
+        with self._lock:
+            if not self._armed:
+                raise RuntimeError("启用实机驱动前必须先接管当前位置")
+            self._enabled = True
+
+    def disable(self) -> None:
+        """Stop sending new goals; existing servo torque is intentionally kept."""
+        with self._lock:
+            self._enabled = False
+            self._armed = False
+
+    def command(self, q: FloatArray) -> bool:
+        """Send a changed joint configuration, returning whether it was sent."""
+        with self._lock:
+            if not self._enabled:
+                return False
+            angles = np.asarray(q, dtype=float).reshape(-1)
+            if not np.all(np.isfinite(angles)):
+                raise ValueError("不能向实机发送非有限关节角")
+            ticks = self.servo_map.to_ticks(angles)
+            if ticks == self._last_ticks:
+                return False
+            # Position feedback is already validated by takeover and the CDSArm
+            # API validates every goal against its independent safety window.
+            self.backend.send_goals(ticks, self._speed, verify=False)
+            self._last_ticks = dict(ticks)
+            return True
+
+
+def _calibration_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "config" / "servo_calibration.yaml"
+
+
+def _build_real_arm_driver(
+    robot: RobotModel,
+    servo_backend: ServoBackend | None,
+    *,
+    speed: int,
+) -> _RealArmDriver | None:
+    """Prepare the optional live driver and fold its limits into the model."""
+    if servo_backend is None:
+        return None
+    missing = [
+        name
+        for name in ("takeover_current", "send_goals")
+        if not callable(getattr(servo_backend, name, None))
+    ]
+    if missing:
+        raise TypeError(
+            "实机驱动需要可写的CDSArm后端，缺少: " + ", ".join(missing)
+        )
+
+    servo_map = ServoMap.from_yaml(_calibration_path(), robot.joint_names)
+    for problem in servo_map.validate_against(robot):
+        logger.warning("实机标定检查: %s", problem)
+    lower, upper = servo_map.effective_limits(robot)
+    robot.tighten_limits(lower, upper)
+    return _RealArmDriver(cast(_CommandBackend, servo_backend), servo_map, speed=speed)
+
+
+class _RealArmControls:
+    """Shared Viser controls for the optional real-arm command path."""
+
+    def __init__(
+        self,
+        server: Any,
+        driver: _RealArmDriver | None,
+        lock: threading.RLock,
+        on_sync: Callable[[FloatArray], None],
+    ) -> None:
+        self.driver = driver
+        self._lock = lock
+        self._on_sync = on_sync
+        self._syncing = False
+        self._busy = False
+
+        folder = server.gui.add_folder("实际机械臂")
+        with folder:
+            self.drive = server.gui.add_checkbox(
+                "驱动实际机械臂",
+                initial_value=False,
+            )
+            self.speed = server.gui.add_slider(
+                "速度",
+                min=1,
+                max=1023,
+                step=1,
+                initial_value=float(driver.speed if driver is not None else 160),
+            )
+            self.read = server.gui.add_button("读取当前位置")
+            self.status = server.gui.add_text(
+                "实机状态",
+                initial_value=(
+                    "已连接，未接管"
+                    if driver is not None
+                    else "未连接串口（启动时传入 --device/--serial）"
+                ),
+            )
+
+        self.drive.on_update(self._on_drive)
+        self.speed.on_update(self._on_speed)
+        self.read.on_click(self._on_read)
+        if driver is None:
+            self.drive.disabled = True
+            self.speed.disabled = True
+            self.read.disabled = True
+
+    def _set_drive_value(self, value: bool) -> None:
+        self._syncing = True
+        try:
+            self.drive.value = value
+        finally:
+            self._syncing = False
+
+    def _on_speed(self, _args: object = None) -> None:
+        with self._lock:
+            if self.driver is None or self._syncing:
+                return
+            try:
+                self.driver.speed = self.speed.value
+            except Exception as exc:
+                self.status.value = f"速度设置失败: {exc}"
+
+    def _on_read(self, _args: object = None) -> None:
+        with self._lock:
+            if self.driver is None or self._busy:
+                return
+            if self.driver.enabled:
+                self.status.value = "请先关闭实机驱动，再读取当前位置"
+                return
+            self._busy = True
+            self.read.disabled = True
+            try:
+                q = self.driver.read_current()
+                self._on_sync(q)
+                self.status.value = "已读取当前位置（尚未发送目标）"
+            except Exception as exc:
+                self.status.value = f"读取失败: {exc}"
+                logger.exception("读取实机当前位置失败")
+            finally:
+                self.read.disabled = False
+                self._busy = False
+
+    def _on_drive(self, _args: object = None) -> None:
+        with self._lock:
+            if self.driver is None or self._syncing or self._busy:
+                return
+            if not bool(self.drive.value):
+                self.driver.disable()
+                self.status.value = "已停止发送（舵机扭矩保持）"
+                return
+
+            self._busy = True
+            self.drive.disabled = True
+            self.speed.disabled = True
+            self.read.disabled = True
+            try:
+                # Keep the driver disabled while the callback aligns the browser
+                # controls; slider callbacks therefore cannot issue a jump.
+                q = self.driver.takeover()
+                self._on_sync(q)
+                self.driver.enable()
+                self.status.value = f"实机驱动已启用 ({self.driver.port_name})"
+            except Exception as exc:
+                self.driver.disable()
+                self._set_drive_value(False)
+                self.status.value = f"接管失败: {exc}"
+                logger.exception("接管实机失败")
+            finally:
+                self.drive.disabled = False
+                self.speed.disabled = False
+                self.read.disabled = False
+                self._busy = False
+
+    def report_command_error(self, exc: Exception) -> None:
+        """Disable the live path after a bus failure and expose the reason."""
+        with self._lock:
+            if self.driver is not None:
+                self.driver.disable()
+            self._set_drive_value(False)
+            self.status.value = f"发送失败，已停用: {exc}"
+            logger.exception("发送实机关节目标失败")
 
 
 def _load_viser_model(
@@ -178,21 +450,34 @@ def launch_viewer(
     robot: RobotModel,
     q0: FloatArray | None = None,
     *,
+    servo_backend: ServoBackend | None = None,
+    speed: int = 160,
     host: str = "0.0.0.0",
     port: int = 8080,
 ) -> None:
     """Open a browser viewer with a slider per actuated joint.
 
     Dragging a slider updates the render immediately. The end-effector pose is
-    shown as a coordinate frame with its position printed in a label.
+    shown as a coordinate frame with its position printed in a label. When
+    ``servo_backend`` is supplied, the panel also offers an explicitly gated
+    real-arm drive path; it is disabled until the operator enables it in Viser.
     """
+    driver = _build_real_arm_driver(robot, servo_backend, speed=speed)
     server, model = _load_viser_model(robot, host=host, port=port)
     names = _joint_order(model)
-    limits = model.get_actuated_joint_limits()
+    if driver is None:
+        limits = model.get_actuated_joint_limits()
+    else:
+        limits = {
+            name: (float(robot.lower[i]), float(robot.upper[i]))
+            for i, name in enumerate(robot.joint_names)
+        }
 
     start = robot.mid_range if q0 is None else robot.clamp(q0)
     sliders: dict[str, Any] = {}
     lock = threading.RLock()
+    syncing = {"active": False}
+    real_controls: _RealArmControls | None = None
 
     tip = robot.fk(start)
     tip_frame = _add_tip_frame(server, "/tip_pose", tip)
@@ -202,16 +487,29 @@ def launch_viewer(
         position=tip[:3, 3] + np.array([0.0, 0.0, 0.05]),
     )
 
+    def render(q: FloatArray) -> None:
+        model.update_cfg(q)
+        pose = robot.fk(q)
+        _update_frame(tip_frame, pose)
+        tip_label.text = (
+            f"tip: ({pose[0, 3]:.3f}, {pose[1, 3]:.3f}, {pose[2, 3]:.3f}) m"
+        )
+        tip_label.position = pose[:3, 3] + np.array([0.0, 0.0, 0.05])
+
     def on_update(_args: object = None) -> None:
         with lock:
+            if syncing["active"]:
+                return
             q = np.array([float(sliders[name].value) for name in names])
-            model.update_cfg(q)
-            pose = robot.fk(q)
-            _update_frame(tip_frame, pose)
-            tip_label.text = (
-                f"tip: ({pose[0, 3]:.3f}, {pose[1, 3]:.3f}, {pose[2, 3]:.3f}) m"
-            )
-            tip_label.position = pose[:3, 3] + np.array([0.0, 0.0, 0.05])
+            render(q)
+            if driver is not None:
+                try:
+                    driver.command(q)
+                except Exception as exc:
+                    if real_controls is not None:
+                        real_controls.report_command_error(exc)
+                    else:
+                        logger.exception("发送实机关节目标失败")
 
     for name in names:
         lo, hi = limits[name]
@@ -222,11 +520,24 @@ def launch_viewer(
             min=lo,
             max=hi,
             step=0.005,
-            initial_value=float(start[names.index(name)]),
+            initial_value=float(start[robot.joint_names.index(name)]),
         )
         slider.on_update(on_update)
         sliders[name] = slider
 
+    def sync_from_q(q: FloatArray) -> None:
+        """Align the browser controls to a feedback pose without commanding it."""
+        with lock:
+            q = robot.clamp(q)
+            syncing["active"] = True
+            try:
+                for name in names:
+                    sliders[name].value = float(q[robot.joint_names.index(name)])
+            finally:
+                syncing["active"] = False
+            render(q)
+
+    real_controls = _RealArmControls(server, driver, lock, sync_from_q)
     _add_workspace_toggle(server, robot)
 
     on_update()
@@ -238,6 +549,8 @@ def launch_viewer(
 def launch_ik_app(
     robot: RobotModel,
     *,
+    servo_backend: ServoBackend | None = None,
+    speed: int = 160,
     host: str = "0.0.0.0",
     port: int = 8080,
 ) -> None:
@@ -251,9 +564,14 @@ def launch_ik_app(
     Solver status is shown in the panel, including a separate note when the
     position is reachable but the requested orientation is not -- the common
     case on this arm, whose wrist cone is narrow.
+
+    When ``servo_backend`` is supplied, enabling the real-arm control in the
+    panel first takes over the current feedback pose and only then sends later
+    IK solutions.
     """
     from viser import transforms as tf
 
+    driver = _build_real_arm_driver(robot, servo_backend, speed=speed)
     server, model = _load_viser_model(robot, host=host, port=port)
 
     q0 = robot.mid_range
@@ -308,6 +626,11 @@ def launch_ik_app(
     # Writing to a slider fires its callback, so guard against the two controls
     # re-triggering each other.
     syncing = {"active": False}
+    real_controls: _RealArmControls | None = None
+
+    def render(q: FloatArray) -> None:
+        model.update_cfg(q)
+        _update_frame(reached_frame, robot.fk(q))
 
     def solve_and_render(target: FloatArray, constrain_rotation: bool) -> None:
         result = (
@@ -315,8 +638,7 @@ def launch_ik_app(
             if constrain_rotation
             else robot.ik(position=target[:3, 3])
         )
-        model.update_cfg(result.q)
-        _update_frame(reached_frame, robot.fk(result.q))
+        render(result.q)
 
         detail = (
             f"pos={result.position_error * 1000:.1f}mm "
@@ -335,11 +657,45 @@ def launch_ik_app(
             else:
                 status.value = f"位置与姿态都不可达 ({result.status.value})  {detail}"
 
+        # An unusable result is still rendered as the nearest pose, but it must
+        # never become a real-arm command.  The CDS bus write is deliberately
+        # non-blocking with respect to servo arrival; the servos enforce the
+        # configured speed while moving toward the latest goal.
+        commandable = result.status is IKStatus.CONVERGED or (
+            not constrain_rotation and result.status is IKStatus.POSITION_ONLY
+        )
+        if driver is not None and commandable:
+            try:
+                driver.command(result.q)
+            except Exception as exc:
+                if real_controls is not None:
+                    real_controls.report_command_error(exc)
+                status.value = f"实机发送失败: {exc}"
+
     def target_from_sliders() -> FloatArray:
         target = np.eye(4)
         target[:3, :3] = rpy_to_matrix(np.radians([s.value for s in rpy_sliders]))
         target[:3, 3] = [s.value for s in pos_sliders]
         return target
+
+    def sync_from_q(q: FloatArray) -> None:
+        """Align target controls to a feedback pose without issuing a goal."""
+        with lock:
+            q = robot.clamp(q)
+            pose = robot.fk(q)
+            rpy = np.degrees(matrix_to_rpy(pose[:3, :3]))
+            syncing["active"] = True
+            try:
+                for slider, value in zip(pos_sliders, pose[:3, 3], strict=True):
+                    slider.value = float(value)
+                for slider, value in zip(rpy_sliders, rpy, strict=True):
+                    slider.value = float(np.clip(value, -180.0, 180.0))
+                gizmo.position = pose[:3, 3]
+                gizmo.wxyz = tf.SO3.from_matrix(pose[:3, :3]).wxyz
+            finally:
+                syncing["active"] = False
+            render(q)
+            status.value = "已同步实机当前位置"
 
     def on_slider_change(_args: object = None) -> None:
         with lock:
@@ -395,6 +751,7 @@ def launch_ik_app(
     gizmo.on_update(on_gizmo_change)
     reset.on_click(on_reset)
 
+    real_controls = _RealArmControls(server, driver, lock, sync_from_q)
     on_slider_change()
     logger.info("viser IK app 启动: http://%s:%d", host, port)
     while True:

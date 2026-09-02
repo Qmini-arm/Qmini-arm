@@ -82,9 +82,13 @@ def geometric_jacobian(state: ChainState) -> FloatArray:
     """
     tip = state.tip_pose[:3, 3]
     dof = state.axis_dirs.shape[0]
-    jac = np.zeros((6, dof), dtype=np.float64)
-    for i in range(dof):
-        axis = state.axis_dirs[i]
-        jac[:3, i] = np.cross(axis, tip - state.axis_origins[i])
-        jac[3:, i] = axis
+    jac = np.empty((6, dof), dtype=np.float64)
+    # Expand the cross product component-wise.  For this small fixed-size
+    # Jacobian it avoids NumPy's general cross-product dispatch overhead.
+    axis = state.axis_dirs
+    delta = tip - state.axis_origins
+    jac[0] = axis[:, 1] * delta[:, 2] - axis[:, 2] * delta[:, 1]
+    jac[1] = axis[:, 2] * delta[:, 0] - axis[:, 0] * delta[:, 2]
+    jac[2] = axis[:, 0] * delta[:, 1] - axis[:, 1] * delta[:, 0]
+    jac[3:] = state.axis_dirs.T
     return jac

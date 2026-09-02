@@ -42,7 +42,8 @@ _FIT_RESIDUAL_WARN_DEG = 2.0
 class RobotModelLike(Protocol):
     """The part of :class:`~arm_ik.RobotModel` this module needs."""
 
-    joint_names: list[str]
+    @property
+    def joint_names(self) -> Sequence[str]: ...
     lower: FloatArray
     upper: FloatArray
 
@@ -349,4 +350,3 @@ def fk_from_servo(
     ticks = backend.read_positions()
     q = servo_map.to_joints(ticks)
     return q, robot.fk(q)
-

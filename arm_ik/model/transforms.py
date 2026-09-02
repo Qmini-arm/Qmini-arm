@@ -131,6 +131,27 @@ def rotation_exp(rotvec: npt.ArrayLike) -> FloatArray:
 def axis_angle_to_matrix(axis: npt.ArrayLike, angle: float) -> FloatArray:
     """Rodrigues rotation about a unit axis."""
     unit = np.asarray(axis, dtype=np.float64).reshape(3)
+    # Check the exact coordinate-axis form before doing a norm/scan.  URDF
+    # joints commonly use these axes and this function is called at every FK
+    # iteration during IK.
+    if abs(unit[0]) == 1.0 and unit[1] == 0.0 and unit[2] == 0.0:
+        cosine, sine = np.cos(angle), np.sin(angle) * np.sign(unit[0])
+        return np.array(
+            [[1.0, 0.0, 0.0], [0.0, cosine, -sine], [0.0, sine, cosine]],
+            dtype=np.float64,
+        )
+    if abs(unit[1]) == 1.0 and unit[0] == 0.0 and unit[2] == 0.0:
+        cosine, sine = np.cos(angle), np.sin(angle) * np.sign(unit[1])
+        return np.array(
+            [[cosine, 0.0, sine], [0.0, 1.0, 0.0], [-sine, 0.0, cosine]],
+            dtype=np.float64,
+        )
+    if abs(unit[2]) == 1.0 and unit[0] == 0.0 and unit[1] == 0.0:
+        cosine, sine = np.cos(angle), np.sin(angle) * np.sign(unit[2])
+        return np.array(
+            [[cosine, -sine, 0.0], [sine, cosine, 0.0], [0.0, 0.0, 1.0]],
+            dtype=np.float64,
+        )
     norm = float(np.linalg.norm(unit))
     if norm < 1e-12:
         return np.eye(3, dtype=np.float64)

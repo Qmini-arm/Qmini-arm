@@ -469,10 +469,17 @@ checker.check(q) -> list[CollisionPair]     # link_a, link_b, depth
 
 ```python
 from arm_ik.viz import launch_viewer, launch_ik_app, replay
+from cds_arm import connect
 
 launch_viewer(robot)                      # 每个关节一个滑条
 launch_ik_app(robot)                      # 拖拽/滑条设定目标，驱动IK
 replay(robot, servo_backend, period=0.05) # 读真实舵机驱动数字孪生
+
+# 传入可写的 CDSArm 后，viewer/IK 面板会出现“驱动实际机械臂”开关。
+# 开关启用时先无跳变接管当前反馈，再发送后续滑条/IK目标。
+with connect("/dev/ttyUSB0") as arm:
+    launch_viewer(robot, servo_backend=arm, speed=160)
+    # 或：launch_ik_app(robot, servo_backend=arm, speed=160)
 ```
 
 三个模式都有「显示可达空间」开关，勾选后画出8000点的可达壳，按离基座距离着色。
@@ -485,13 +492,24 @@ replay(robot, servo_backend, period=0.05) # 读真实舵机驱动数字孪生
 `replay`不涉及IK，是排查标定错误最直接的工具：如果实机姿态和浏览器里的对不上，
 基本就是`center_tick`或`direction`错了。
 
+viewer 和 IK 启动时默认像`replay`一样自动连接唯一串口；也可以通过`--device`
+（`--serial`同义）指定串口：
+
+```bash
+uv run arm-ik viz --mode viewer --device /dev/ttyUSB0 --speed 160
+uv run arm-ik viz --mode ik --device /dev/ttyUSB0 --speed 120
+```
+
+浏览器中勾选“驱动实际机械臂”才会开始发送；关闭后只停止发送新目标，不会自动关闭舵机扭矩。
+需要纯仿真且不打开串口时显式加`--sim`。
+
 ## 命令行
 
 ```bash
 uv run arm-ik --urdf description/arm.urdf fk 0 0 0 0 0 0
 uv run arm-ik --urdf description/arm.urdf ik --pos 0.18 0 0.2 --servo
 uv run arm-ik workspace --count 20000
-uv run arm-ik viz --mode ik --port 8090
+uv run arm-ik viz --mode ik --port 8090 --sim
 uv run arm-ik viz --mode replay --device /dev/ttyUSB0
 ```
 

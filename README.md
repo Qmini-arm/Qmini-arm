@@ -123,21 +123,30 @@ print(ticks)   # {1: 799, 2: 118, 3: 262, 4: 411, 5: 271, 6: 99}
 uv run arm-ik fk 0 0 0 0 0 0                # 正运动学
 uv run arm-ik ik --pos 0.18 0 0.2 --servo   # 逆解并显示舵机 tick
 uv run arm-ik workspace --count 20000       # 采样并分析可达空间
-uv run arm-ik viz --mode viewer             # viser 浏览器可视化
-uv run arm-ik viz --mode ik                 # 拖拽目标姿态驱动 IK
+uv run arm-ik viz --mode viewer --sim       # viser 浏览器纯仿真
+uv run arm-ik viz --mode ik --sim           # 拖拽目标姿态驱动 IK（纯仿真）
+uv run arm-ik viz --mode viewer --device /dev/ttyUSB0 --speed 160
+                                             # 注入实机后，在浏览器勾选驱动开关
 ```
 
 ### 与 cds_arm 的关系
 
-`arm_ik` 只做运动学计算，不碰串口。硬件读写由 `cds_arm` 负责：
+`arm_ik` 的运动学核心只做计算，不碰串口。硬件读写由 `cds_arm` 负责：
 用 `arm_ik` 算出关节角 → `ServoMap.to_ticks` 转成舵机 tick →
-`cds_arm.CDSArm.move()` 下发。本库把 `ServoMap` 与舵机标定文件
+`cds_arm.CDSArm.send_goals()` 下发。viewer/IK 可通过注入 `CDSArm` 后端提供
+显式关闭的实机驱动开关；启用时会先 `takeover_current()`，再发送新目标。本库把 `ServoMap` 与舵机标定文件
 `arm_ik/config/servo_calibration.yaml` 打包，便于换到不同的实机标定。
 
 ### 可视化
 
 `viz` extra 依赖 viser，在浏览器里渲染。`replay` 可直接读真实舵机角度驱动数字孪生，
 是排查标定（零位/方向）错误的最直接工具。
+
+viewer 和 IK 默认会像 replay 一样自动连接唯一串口；也可以启动时传入
+`--device`（或 `--serial`）指定设备。
+在浏览器的“实际机械臂”面板中勾选“驱动实际机械臂”。需要纯仿真且不打开串口时使用
+`--sim`。关闭驱动开关只停止后续目标发送，舵机扭矩按
+`cds_arm` 的语义保持不变。
 
 ```bash
 uv run arm-ik viz --mode replay

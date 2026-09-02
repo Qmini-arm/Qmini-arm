@@ -14,6 +14,16 @@ logger = logging.getLogger(__name__)
 DEFAULT_URDF = "description/arm.urdf"
 
 
+def _servo_speed(value: str) -> int:
+    try:
+        speed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("速度必须是整数") from exc
+    if not 1 <= speed <= 1023:
+        raise argparse.ArgumentTypeError("速度必须在1..1023")
+    return speed
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="arm-ik",
@@ -40,7 +50,25 @@ def _build_parser() -> argparse.ArgumentParser:
     viz.add_argument("--mode", choices=["viewer", "ik", "replay"], default="viewer")
     viz.add_argument("--host", default="0.0.0.0")
     viz.add_argument("--port", type=int, default=8080)
-    viz.add_argument("--device", default=None, help="serial port for replay mode")
+    connection = viz.add_mutually_exclusive_group()
+    connection.add_argument(
+        "--device",
+        "--serial",
+        dest="device",
+        default=None,
+        help="serial port (default: auto-select a unique device)",
+    )
+    connection.add_argument(
+        "--sim",
+        action="store_true",
+        help="do not open a serial port; keep viewer/ik in simulation mode",
+    )
+    viz.add_argument(
+        "--speed",
+        type=_servo_speed,
+        default=160,
+        help="real-arm goal speed (1..1023) for viewer/ik",
+    )
     return parser
 
 
@@ -107,10 +135,40 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "viz":
         from arm_ik.viz import launch_ik_app, launch_viewer, replay
 
+        if args.sim and args.mode == "replay":
+            print("--sim只适用于viewer和ik模式", file=sys.stderr)
+            return 2
+
         if args.mode == "viewer":
-            launch_viewer(robot, host=args.host, port=args.port)
+            if not args.sim:
+                from cds_arm import connect
+
+                bus = connect(args.device) if args.device else connect()
+                with bus as arm:
+                    launch_viewer(
+                        robot,
+                        servo_backend=arm,
+                        speed=args.speed,
+                        host=args.host,
+                        port=args.port,
+                    )
+            else:
+                launch_viewer(robot, host=args.host, port=args.port)
         elif args.mode == "ik":
-            launch_ik_app(robot, host=args.host, port=args.port)
+            if not args.sim:
+                from cds_arm import connect
+
+                bus = connect(args.device) if args.device else connect()
+                with bus as arm:
+                    launch_ik_app(
+                        robot,
+                        servo_backend=arm,
+                        speed=args.speed,
+                        host=args.host,
+                        port=args.port,
+                    )
+            else:
+                launch_ik_app(robot, host=args.host, port=args.port)
         else:
             from cds_arm import connect
 
