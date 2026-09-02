@@ -98,6 +98,19 @@ ticks = servo.to_ticks(result.q)   # 交给 cds_arm 下发
 print(ticks)   # {1: 799, 2: 118, 3: 262, 4: 411, 5: 271, 6: 99}
 ```
 
+如果只需要位置、希望单独控制手掌旋转轴，使用`ik_position()`固定servo6：
+
+```python
+from arm_ik.servo import Servo6Controller
+
+servo6 = Servo6Controller(robot, servo, angle=np.radians(10.0))
+result = robot.ik_position([0.18, 0.0, 0.20], servo6=servo6.angle)
+ticks = servo.to_ticks(result.q)
+```
+
+该接口只优化前5轴，返回值仍为完整6轴向量；Viser IK界面中的servo6滑块也是独立控制，
+不会再把完整末端RPY送入逆解。
+
 `result.status` 是 `IKStatus` 枚举，而非布尔：
 
 | 状态                        | 含义                                   |

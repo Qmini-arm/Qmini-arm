@@ -200,6 +200,29 @@ ik(
 
 连续求解（比如跟踪轨迹）时把上一次的解传给`seed`，可以让关节解留在同一分支上不跳变。
 
+### servo6 独立控制
+
+这台机械臂的第6轴只改变手掌绕自身轴的姿态，不改变手掌原点位置。
+`ik_position()`因此只优化前5个关节，并把servo6固定在调用者给出的角度（或seed中的角度）。
+返回值仍是完整6维向量，可以直接交给`fk()`和`ServoMap.to_ticks()`：
+
+```python
+from arm_ik.servo import Servo6Controller, ServoMap
+
+servo = ServoMap.from_yaml("arm_ik/config/servo_calibration.yaml", robot.joint_names)
+servo6 = Servo6Controller(robot, servo, angle=np.radians(10.0))
+result = robot.ik_position(
+    position=[0.18, 0.0, 0.20],
+    servo6=servo6.angle,
+    seed=robot.mid_range[:5],
+)
+ticks = servo.to_ticks(result.q)
+```
+
+`robot.compose_arm_q(q_arm, servo6=angle)`可在不求IK时合成完整关节向量；
+`Servo6Controller.set_degrees()`、`to_tick()`和`compose()`分别用于独立设角度、换tick和合并。
+Viser的IK界面也采用相同语义：位置由前5轴IK求解，servo6使用独立滑块，不再尝试完整RPY逆解。
+
 ### `jacobian()` 与可操作度
 
 ```python
@@ -485,9 +508,9 @@ with connect("/dev/ttyUSB0") as arm:
 三个模式都有「显示可达空间」开关，勾选后画出8000点的可达壳，按离基座距离着色。
 点云在首次勾选时才采样，不拖慢启动。
 
-`launch_ik_app`的目标位姿有两种控制方式并且双向同步：拖拽手柄，
-或者6个滑条（位置米、姿态度）。「约束姿态」勾选框默认不勾——只解位置更容易得到有用结果。
-状态栏会区分「位置可达但该姿态不可达」和「位置与姿态都不可达」。
+`launch_ik_app`的目标位置有两种控制方式并且双向同步：拖拽手柄，
+或者3个位置滑条（米）。servo6另有独立角度滑条；位置由前5轴IK求解，
+不会把完整末端RPY作为逆解约束。
 
 `replay`不涉及IK，是排查标定错误最直接的工具：如果实机姿态和浏览器里的对不上，
 基本就是`center_tick`或`direction`错了。

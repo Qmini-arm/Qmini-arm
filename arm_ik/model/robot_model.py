@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -19,9 +20,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["RobotModel"]
+__all__ = ["RobotModel", "SERVO6_JOINT"]
 
 DEFAULT_TIP = "hand_palm"
+SERVO6_JOINT = "kd_4_to_palm"
 
 
 @dataclass
@@ -78,6 +80,33 @@ class RobotModel:
     @property
     def dof(self) -> int:
         return len(self.joint_names)
+
+    @property
+    def servo6_index(self) -> int:
+        """Index of the independent wrist/palm rotation joint."""
+        try:
+            return self.joint_names.index(SERVO6_JOINT)
+        except ValueError as exc:
+            raise ValueError(
+                f"模型中没有独立servo6关节{SERVO6_JOINT!r}"
+            ) from exc
+
+    @property
+    def arm_joint_names(self) -> tuple[str, ...]:
+        """The five joints used by position IK (servo6 excluded)."""
+        index = self.servo6_index
+        return tuple(name for i, name in enumerate(self.joint_names) if i != index)
+
+    @property
+    def arm_dof(self) -> int:
+        """Number of joints solved by :meth:`ik_position`."""
+        return self.dof - 1
+
+    @property
+    def servo6_limits(self) -> tuple[float, float]:
+        """URDF limits for the independently controlled servo6 angle."""
+        index = self.servo6_index
+        return float(self.lower[index]), float(self.upper[index])
 
     def tighten_limits(self, lower: FloatArray, upper: FloatArray) -> None:
         """Narrow the joint limits in place, never widen them.
@@ -213,6 +242,7 @@ class RobotModel:
         seed: npt.ArrayLike | None = None,
         solver: str = "dls",
         config: object | None = None,
+        fixed_joints: Mapping[int | str, float] | None = None,
     ) -> IKResult:
         """Solve inverse kinematics for a tip pose.
 
@@ -236,7 +266,84 @@ class RobotModel:
                 **{**cfg.__dict__, "orientation_weight": 0.0}  # type: ignore[arg-type]
             )
         solver_cls = get_solver(solver)
-        return solver_cls(self, cfg).solve(goal, seed)  # type: ignore[arg-type]
+        return solver_cls(self, cfg).solve(  # type: ignore[arg-type]
+            goal, seed, fixed_joints=fixed_joints
+        )
+
+    def compose_arm_q(
+        self,
+        q_arm: npt.ArrayLike,
+        servo6: float | None = None,
+    ) -> FloatArray:
+        """Compose a five-joint arm vector with an independently chosen servo6.
+
+        A full ``dof`` vector is accepted as well; in that case ``servo6``
+        replaces its sixth-joint entry when supplied.  The returned vector is
+        always clamped to the model's joint limits.
+        """
+        values = np.asarray(q_arm, dtype=np.float64).reshape(-1)
+        index = self.servo6_index
+        if values.size == self.arm_dof:
+            full = np.empty(self.dof, dtype=np.float64)
+            full[:index] = values[:index]
+            full[index + 1 :] = values[index:]
+            full[index] = self.mid_range[index] if servo6 is None else float(servo6)
+        elif values.size == self.dof:
+            full = values.copy()
+            if servo6 is not None:
+                full[index] = float(servo6)
+        else:
+            raise ValueError(
+                f"q_arm长度应为{self.arm_dof}（或完整{self.dof}），收到{values.size}"
+            )
+        if not np.all(np.isfinite(full)):
+            raise ValueError("关节角必须是有限数")
+        return self.clamp(full)
+
+    def ik_position(
+        self,
+        position: npt.ArrayLike,
+        *,
+        servo6: float | None = None,
+        seed: npt.ArrayLike | None = None,
+        solver: str = "dls",
+        config: object | None = None,
+    ) -> IKResult:
+        """Solve position IK while keeping servo6 completely independent.
+
+        The result retains a full joint vector for FK and servo output, but its
+        servo6 entry is fixed to ``servo6`` (or to the seed/mid-range value) and
+        is never optimized.  Pass a five-element seed for the position joints,
+        or a complete vector when continuing from a previous solve.
+        """
+        index = self.servo6_index
+        if seed is None:
+            full_seed = self.mid_range.copy()
+        else:
+            supplied = np.asarray(seed, dtype=np.float64).reshape(-1)
+            if supplied.size == self.arm_dof:
+                full_seed = self.compose_arm_q(supplied)
+            elif supplied.size == self.dof:
+                full_seed = self.clamp(supplied)
+            else:
+                raise ValueError(
+                    f"seed长度应为{self.arm_dof}（或完整{self.dof}），收到{supplied.size}"
+                )
+        angle = float(servo6) if servo6 is not None else float(full_seed[index])
+        if not np.isfinite(angle):
+            raise ValueError("servo6角度必须是有限数")
+        if not self.lower[index] <= angle <= self.upper[index]:
+            raise ValueError(
+                f"servo6={angle}超出限位[{self.lower[index]},{self.upper[index]}]"
+            )
+        full_seed[index] = angle
+        return self.ik(
+            position=position,
+            seed=full_seed,
+            solver=solver,
+            config=config,
+            fixed_joints={index: angle},
+        )
 
     @staticmethod
     def target_pose(

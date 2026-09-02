@@ -48,7 +48,10 @@ class DLSSolver(BaseIKSolver):
         residual = float(np.linalg.norm(err))
         history.append(residual)
 
-        identity = np.eye(self.robot.dof, dtype=np.float64)
+        active = np.flatnonzero(self._active_mask)
+        if active.size == 0:
+            return q, 0, history
+        identity = np.eye(active.size, dtype=np.float64)
         iterations = 0
 
         for _ in range(1, cfg.max_iterations + 1):
@@ -65,26 +68,31 @@ class DLSSolver(BaseIKSolver):
 
             jacobian = geometric_jacobian(state)
             if position_only:
-                jac = weights[:3, None] * jacobian[:3]
+                jacobian = weights[:3, None] * jacobian[:3]
                 step_error = err[:3]
             else:
-                jac = weights[:, None] * jacobian
+                jacobian = weights[:, None] * jacobian
                 step_error = err
             # Freeze joints already pinned at a limit and pushing further out.
-            jac = jac * self._free_mask(q, jac, step_error)[None, :]
+            free = self._free_mask(q, jacobian, step_error)
+            jac = jacobian[:, active] * free[active][None, :]
 
             hessian = jac.T @ jac + (lam**2) * identity
             try:
-                step = np.linalg.solve(hessian, jac.T @ step_error)
+                step_active = np.linalg.solve(hessian, jac.T @ step_error)
             except np.linalg.LinAlgError:
                 lam = min(lam * cfg.damping_increase, cfg.damping_max)
                 continue
 
-            step_norm = float(np.linalg.norm(step))
+            step = np.zeros(self.robot.dof, dtype=np.float64)
+            step[active] = step_active
+            step_norm = float(np.linalg.norm(step_active))
             if step_norm > cfg.max_step_norm:
                 step *= cfg.max_step_norm / step_norm
 
             candidate = np.clip(q + step, self.robot.lower, self.robot.upper)
+            if np.any(self._fixed_mask):
+                candidate[self._fixed_mask] = self._fixed_values[self._fixed_mask]
             cand_state = self.robot.chain_state(candidate)
             if position_only:
                 cand_raw = np.zeros(6, dtype=np.float64)
@@ -120,6 +128,7 @@ class DLSSolver(BaseIKSolver):
         """
         gradient = jac.T @ err
         mask = np.ones(self.robot.dof, dtype=np.float64)
+        mask[self._fixed_mask] = 0.0
         at_upper = q >= self.robot.upper - 1e-9
         at_lower = q <= self.robot.lower + 1e-9
         mask[at_upper & (gradient > 0)] = 0.0

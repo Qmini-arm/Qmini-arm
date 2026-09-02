@@ -29,31 +29,48 @@ class LeastSquaresSolver(BaseIKSolver):
     ) -> tuple[FloatArray, int, list[float]]:
         weights = self.config.weights
         history: list[float] = []
+        active = np.flatnonzero(self._active_mask)
 
-        def residual(q: FloatArray) -> FloatArray:
-            err = pose_error(self.robot.fk(q), target) * weights
+        if active.size == 0:
+            q = seed.copy()
+            q[self._fixed_mask] = self._fixed_values[self._fixed_mask]
+            history.append(float(np.linalg.norm(pose_error(self.robot.fk(q), target) * weights)))
+            return q, 0, history
+
+        def expand(values: FloatArray) -> FloatArray:
+            q = seed.copy()
+            q[active] = values
+            q[self._fixed_mask] = self._fixed_values[self._fixed_mask]
+            return q
+
+        def residual(values: FloatArray) -> FloatArray:
+            err = pose_error(self.robot.fk(expand(values)), target) * weights
             history.append(float(np.linalg.norm(err)))
             return err
 
-        def jacobian(q: FloatArray) -> FloatArray:
+        def jacobian(values: FloatArray) -> FloatArray:
             # Sign: the residual is (target - current), so d(residual)/dq = -J.
-            return -weights[:, None] * self.robot.jacobian(q)
+            return -weights[:, None] * self.robot.jacobian(expand(values))[:, active]
 
         # Nudge the seed strictly inside the bounds; trf rejects a start exactly
         # on a bound in some scipy versions.
-        span = self.robot.upper - self.robot.lower
+        span = self.robot.upper[active] - self.robot.lower[active]
         margin = np.minimum(1e-6, span * 1e-3)
-        start = np.clip(seed, self.robot.lower + margin, self.robot.upper - margin)
+        start = np.clip(
+            seed[active],
+            self.robot.lower[active] + margin,
+            self.robot.upper[active] - margin,
+        )
 
         outcome = least_squares(
             residual,
             start,
             jac=jacobian,
-            bounds=(self.robot.lower, self.robot.upper),
+            bounds=(self.robot.lower[active], self.robot.upper[active]),
             method="trf",
             xtol=1e-12,
             ftol=1e-12,
             gtol=1e-12,
             max_nfev=self.config.max_iterations * 4,
         )
-        return np.asarray(outcome.x, dtype=np.float64), int(outcome.nfev), history
+        return expand(np.asarray(outcome.x, dtype=np.float64)), int(outcome.nfev), history

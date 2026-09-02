@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 
 import numpy as np
 import numpy.typing as npt
@@ -26,6 +26,12 @@ class BaseIKSolver(ABC):
     def __init__(self, robot: RobotModel, config: SolverConfig | None = None) -> None:
         self.robot = robot
         self.config = config or SolverConfig()
+        # A position solve can hold a wrist joint fixed while the same full
+        # configuration vector is retained for FK and servo output.  The mask
+        # lives on the solver instance so custom solvers remain source
+        # compatible with the existing ``_solve_from(target, seed)`` hook.
+        self._fixed_mask = np.zeros(robot.dof, dtype=bool)
+        self._fixed_values = np.zeros(robot.dof, dtype=np.float64)
 
     @abstractmethod
     def _solve_from(
@@ -37,6 +43,8 @@ class BaseIKSolver(ABC):
         self,
         target: npt.ArrayLike,
         seed: npt.ArrayLike | None = None,
+        *,
+        fixed_joints: Mapping[int | str, float] | None = None,
     ) -> IKResult:
         """Solve with multiple restarts, returning the best attempt.
 
@@ -48,10 +56,19 @@ class BaseIKSolver(ABC):
         if goal.shape != (4, 4):
             raise ValueError(f"目标位姿必须是4x4变换矩阵，得到shape={goal.shape}")
 
+        self._set_fixed_joints(fixed_joints)
+
         best: IKResult | None = None
         for attempt, start in enumerate(self._seeds(seed), start=1):
+            if np.any(self._fixed_mask):
+                start = start.copy()
+                start[self._fixed_mask] = self._fixed_values[self._fixed_mask]
             q, iterations, history = self._solve_from(goal, start)
             q = self.robot.clamp(q)
+            if np.any(self._fixed_mask):
+                # Enforce the contract even for third-party solvers that do not
+                # inspect ``_active_mask`` themselves.
+                q[self._fixed_mask] = self._fixed_values[self._fixed_mask]
             result = self._classify(goal, q, iterations, attempt, history)
             if best is None or self._is_better(result, best):
                 best = result
@@ -60,6 +77,41 @@ class BaseIKSolver(ABC):
         assert best is not None  # at least one seed is always produced
         logger.debug("%s: %s", self.name, best)
         return best
+
+    def _set_fixed_joints(
+        self, fixed_joints: Mapping[int | str, float] | None
+    ) -> None:
+        """Validate and install optional fixed joint values for one solve."""
+        self._fixed_mask.fill(False)
+        self._fixed_values.fill(0.0)
+        if fixed_joints is None:
+            return
+        for key, value in fixed_joints.items():
+            if isinstance(key, str):
+                try:
+                    index = self.robot.joint_names.index(key)
+                except ValueError as exc:
+                    raise ValueError(f"固定关节不存在: {key!r}") from exc
+            else:
+                index = int(key)
+                if not 0 <= index < self.robot.dof:
+                    raise ValueError(f"固定关节索引越界: {index}")
+            angle = float(value)
+            if not np.isfinite(angle):
+                raise ValueError(f"固定关节角必须是有限数: {key!r}")
+            if not self.robot.lower[index] <= angle <= self.robot.upper[index]:
+                name = self.robot.joint_names[index]
+                raise ValueError(
+                    f"固定关节{name}={angle}超出限位"
+                    f"[{self.robot.lower[index]},{self.robot.upper[index]}]"
+                )
+            self._fixed_mask[index] = True
+            self._fixed_values[index] = angle
+
+    @property
+    def _active_mask(self) -> np.ndarray:
+        """Boolean mask of joints the numerical solver is allowed to change."""
+        return ~self._fixed_mask
 
     def _seeds(self, seed: npt.ArrayLike | None) -> Iterator[FloatArray]:
         """Yield start configurations, most promising first.

@@ -4,9 +4,8 @@ Three entry points share one ``ViserUrdf`` render path:
 
 - :func:`launch_viewer` -- joint-angle sliders over the URDF's own limits, with
   an optional explicitly enabled real-arm command path.
-- :func:`launch_ik_app` -- an end-effector target driving IK, adjustable either
-  by dragging a gizmo or by six sliders (x/y/z and roll/pitch/yaw), with the
-  same optional real-arm command path.
+- :func:`launch_ik_app` -- an end-effector position target driving the first five
+  joints, plus an independent servo6 angle control.
 - :func:`replay` -- read the real servos and animate the digital twin.
 
 viser renders in a browser; the server is a local Python process, so the same
@@ -31,9 +30,9 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
 
-from ..config import IKStatus
-from ..model.transforms import FloatArray, matrix_to_rpy, rpy_to_matrix
+from ..model.transforms import FloatArray
 from ..servo.mapping import ServoBackend, ServoMap
+from ..servo.servo6 import SERVO6_JOINT, Servo6Controller
 
 if TYPE_CHECKING:
     from ..model.robot_model import RobotModel
@@ -168,6 +167,25 @@ class _RealArmDriver:
             self.backend.send_goals(ticks, self._speed, verify=False)
             self._last_ticks = dict(ticks)
             return True
+
+    def command_servo6(self, angle: float) -> bool:
+        """Command only the independent servo6 state around the held arm pose."""
+        with self._lock:
+            if not self._enabled:
+                return False
+            if self._last_ticks is None:
+                raise RuntimeError("servo6控制前必须先读取或接管当前位置")
+            index = self.servo_map.joint_names.index(SERVO6_JOINT)
+            calibration = self.servo_map.calibrations[index]
+            value = float(angle)
+            lower, upper = calibration.radian_bounds
+            if not np.isfinite(value) or not lower <= value <= upper:
+                raise ValueError(
+                    f"servo6={value}超出限位[{lower},{upper}]"
+                )
+            q = self.servo_map.to_joints(self._last_ticks)
+            q[index] = value
+            return self.command(q)
 
 
 def _calibration_path() -> Path:
@@ -556,14 +574,10 @@ def launch_ik_app(
 ) -> None:
     """Open a viewer where an end-effector target drives IK.
 
-    The target can be moved two ways, kept in sync: a draggable gizmo, and six
-    sliders (position in metres, orientation as roll/pitch/yaw in degrees).
-    Sliders are the easier control for fine adjustment and for setting one axis
-    at a time; the gizmo is faster for coarse moves.
-
-    Solver status is shown in the panel, including a separate note when the
-    position is reachable but the requested orientation is not -- the common
-    case on this arm, whose wrist cone is narrow.
+    The position target can be moved two ways, kept in sync: a draggable gizmo
+    with rotation handles disabled, and three sliders in metres.  Servo6 has a
+    separate angle slider and is composed into the six-joint command after
+    position IK; no full-RPY solve is attempted.
 
     When ``servo_backend`` is supplied, enabling the real-arm control in the
     panel first takes over the current feedback pose and only then sends later
@@ -577,6 +591,7 @@ def launch_ik_app(
     q0 = robot.mid_range
     tip = robot.fk(q0)
     lower, upper = _position_bounds(robot)
+    servo6_index = robot.servo6_index
 
     gizmo = server.scene.add_transform_controls(
         "/target_tf",
@@ -584,6 +599,7 @@ def launch_ik_app(
         wxyz=tf.SO3.from_matrix(tip[:3, :3]).wxyz,
         depth_test=False,
         scale=0.15,
+        disable_rotations=True,
     )
     reached_frame = _add_tip_frame(server, "/reached_pose", tip)
 
@@ -600,20 +616,16 @@ def launch_ik_app(
             for i, axis in enumerate(("x", "y", "z"))
         ]
 
-    start_rpy = np.degrees(matrix_to_rpy(tip[:3, :3]))
-    orientation_folder = server.gui.add_folder("目标姿态 (deg)")
-    with orientation_folder:
-        rpy_sliders = [
-            server.gui.add_slider(
-                axis,
-                min=-180.0,
-                max=180.0,
-                step=0.5,
-                initial_value=float(start_rpy[i]),
-            )
-            for i, axis in enumerate(("roll", "pitch", "yaw"))
-        ]
-        use_orientation = server.gui.add_checkbox("约束姿态", initial_value=False)
+    servo6_control = Servo6Controller(robot)
+    servo6_folder = server.gui.add_folder("servo6 独立控制 (deg)")
+    with servo6_folder:
+        servo6_slider = server.gui.add_slider(
+            "servo6",
+            min=float(np.degrees(servo6_control.limits[0])),
+            max=float(np.degrees(servo6_control.limits[1])),
+            step=0.5,
+            initial_value=servo6_control.degrees,
+        )
 
     status = server.gui.add_text("状态", initial_value="idle")
     reset = server.gui.add_button("回到中位姿")
@@ -627,44 +639,39 @@ def launch_ik_app(
     # re-triggering each other.
     syncing = {"active": False}
     real_controls: _RealArmControls | None = None
+    state: dict[str, FloatArray] = {"q": q0.copy()}
 
     def render(q: FloatArray) -> None:
+        state["q"] = q.copy()
         model.update_cfg(q)
         _update_frame(reached_frame, robot.fk(q))
 
-    def solve_and_render(target: FloatArray, constrain_rotation: bool) -> None:
-        result = (
-            robot.ik(target=target)
-            if constrain_rotation
-            else robot.ik(position=target[:3, 3])
+    def solve_and_render(position: FloatArray) -> None:
+        servo6_control.set_degrees(float(servo6_slider.value), clamp=True)
+        result = robot.ik_position(
+            position,
+            servo6=servo6_control.angle,
+            seed=state["q"],
         )
         render(result.q)
+        reached = robot.fk(result.q)
+        syncing["active"] = True
+        try:
+            gizmo.position = reached[:3, 3]
+            gizmo.wxyz = tf.SO3.from_matrix(reached[:3, :3]).wxyz
+        finally:
+            syncing["active"] = False
 
         detail = (
             f"pos={result.position_error * 1000:.1f}mm "
-            f"rot={np.degrees(result.orientation_error):.1f}deg"
+            f"servo6={servo6_control.degrees:.1f}deg"
         )
-        if result.status.is_usable:
-            status.value = f"{result.status.value}  {detail}"
-        elif not constrain_rotation:
-            status.value = f"该位置不可达 ({result.status.value})  {detail}"
-        else:
-            # Re-check without the orientation constraint to tell the user which
-            # half of the request is the problem.
-            position_only = robot.ik(position=target[:3, 3])
-            if position_only.status.is_usable:
-                status.value = f"位置可达，但该姿态不可达  {detail}"
-            else:
-                status.value = f"位置与姿态都不可达 ({result.status.value})  {detail}"
-
-        # An unusable result is still rendered as the nearest pose, but it must
-        # never become a real-arm command.  The CDS bus write is deliberately
-        # non-blocking with respect to servo arrival; the servos enforce the
-        # configured speed while moving toward the latest goal.
-        commandable = result.status is IKStatus.CONVERGED or (
-            not constrain_rotation and result.status is IKStatus.POSITION_ONLY
+        status.value = (
+            f"{result.status.value}  {detail}"
+            if result.status.is_usable
+            else f"位置不可达 ({result.status.value})  {detail}"
         )
-        if driver is not None and commandable:
+        if driver is not None and result.status.is_usable:
             try:
                 driver.command(result.q)
             except Exception as exc:
@@ -672,24 +679,20 @@ def launch_ik_app(
                     real_controls.report_command_error(exc)
                 status.value = f"实机发送失败: {exc}"
 
-    def target_from_sliders() -> FloatArray:
-        target = np.eye(4)
-        target[:3, :3] = rpy_to_matrix(np.radians([s.value for s in rpy_sliders]))
-        target[:3, 3] = [s.value for s in pos_sliders]
-        return target
+    def target_position() -> FloatArray:
+        return np.array([slider.value for slider in pos_sliders], dtype=np.float64)
 
     def sync_from_q(q: FloatArray) -> None:
-        """Align target controls to a feedback pose without issuing a goal."""
+        """Align controls to a feedback pose without issuing a goal."""
         with lock:
             q = robot.clamp(q)
             pose = robot.fk(q)
-            rpy = np.degrees(matrix_to_rpy(pose[:3, :3]))
+            servo6_control.set_angle(float(q[servo6_index]))
             syncing["active"] = True
             try:
                 for slider, value in zip(pos_sliders, pose[:3, 3], strict=True):
                     slider.value = float(value)
-                for slider, value in zip(rpy_sliders, rpy, strict=True):
-                    slider.value = float(np.clip(value, -180.0, 180.0))
+                servo6_slider.value = servo6_control.degrees
                 gizmo.position = pose[:3, 3]
                 gizmo.wxyz = tf.SO3.from_matrix(pose[:3, :3]).wxyz
             finally:
@@ -701,53 +704,40 @@ def launch_ik_app(
         with lock:
             if syncing["active"]:
                 return
-            target = target_from_sliders()
-            syncing["active"] = True
-            try:
-                gizmo.position = target[:3, 3]
-                gizmo.wxyz = tf.SO3.from_matrix(target[:3, :3]).wxyz
-            finally:
-                syncing["active"] = False
-            solve_and_render(target, bool(use_orientation.value))
+            solve_and_render(target_position())
 
     def on_gizmo_change(_args: object = None) -> None:
         with lock:
             if syncing["active"]:
                 return
-            target = np.eye(4)
-            target[:3, :3] = tf.SO3(gizmo.wxyz).as_matrix()
-            target[:3, 3] = np.asarray(gizmo.position, dtype=float)
-            rpy = np.degrees(matrix_to_rpy(target[:3, :3]))
+            position = np.asarray(gizmo.position, dtype=np.float64)
             syncing["active"] = True
             try:
-                for slider, value in zip(pos_sliders, target[:3, 3], strict=True):
+                for slider, value in zip(pos_sliders, position, strict=True):
                     # Dragging can leave the reachable box the sliders span.
                     slider.value = float(np.clip(value, slider.min, slider.max))
-                for slider, value in zip(rpy_sliders, rpy, strict=True):
-                    slider.value = float(np.clip(value, -180.0, 180.0))
             finally:
                 syncing["active"] = False
-            solve_and_render(target, bool(use_orientation.value))
+            solve_and_render(target_position())
 
     def on_reset(_args: object = None) -> None:
         with lock:
             home = robot.fk(robot.mid_range)
-            home_rpy = np.degrees(matrix_to_rpy(home[:3, :3]))
+            servo6_control.set_angle(float(robot.mid_range[servo6_index]))
             syncing["active"] = True
             try:
                 for slider, value in zip(pos_sliders, home[:3, 3], strict=True):
                     slider.value = float(value)
-                for slider, value in zip(rpy_sliders, home_rpy, strict=True):
-                    slider.value = float(value)
+                servo6_slider.value = servo6_control.degrees
                 gizmo.position = home[:3, 3]
                 gizmo.wxyz = tf.SO3.from_matrix(home[:3, :3]).wxyz
             finally:
                 syncing["active"] = False
-            solve_and_render(home, bool(use_orientation.value))
+            solve_and_render(home[:3, 3])
 
-    for slider in (*pos_sliders, *rpy_sliders):
+    for slider in pos_sliders:
         slider.on_update(on_slider_change)
-    use_orientation.on_update(on_slider_change)
+    servo6_slider.on_update(on_slider_change)
     gizmo.on_update(on_gizmo_change)
     reset.on_click(on_reset)
 
