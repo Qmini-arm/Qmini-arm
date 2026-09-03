@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qmini-avatar"
+version = "0.1.0"
+description = "Local-camera Avatar teleoperation for the Qmini arm and uHand"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+  "cds-arm-control>=0.3.0",
+  "uhand-control>=0.1.0",
+  "numpy>=1.26,<2",
+  "opencv-python>=4.10",
+  "mediapipe==0.10.21; platform_system == 'Darwin'",
+  "mediapipe>=0.10.14,<0.11; platform_system != 'Darwin'",
+  "pyserial>=3.5,<4",
+  "PyYAML>=6.0",
+]
+
+[project.scripts]
+qmini-avatar = "qmini_avatar.app:main"
+
+[tool.uv.sources]
+cds-arm-control = { path = "../..", editable = true }
+uhand-control = { path = "../../hand_serial_tools", editable = true }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["qmini_avatar*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

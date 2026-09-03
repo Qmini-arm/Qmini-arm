@@ -2,6 +2,12 @@
 
 Qmini机械臂的URDF描述、网格资源和CDS55xx六轴基础运动Python库。
 
+## 实验性 Demo
+
+- [Qmini Avatar](demos/qmini_avatar/README.md)：使用普通电脑摄像头和 MediaPipe，将人手的
+  平移、腕部旋转与五指开合实时映射到 Qmini 机械臂和 uHand。它拥有独立的安装环境，
+  OpenCV、MediaPipe 等视觉依赖不会进入底层动作库。
+
 ## Python库
 
 `cds_arm`只提供基础运动API，不包含预设演示姿态、动作序列、交互标定或演示CLI。
